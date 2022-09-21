@@ -1,0 +1,33 @@
+services:
+  php:
+    image: php-redis
+    build: .
+    init: true
+    command:
+      - tail
+      - -f
+      - /dev/null
+
+  redis:
+    image: redis:6.2.6
+    init: true
+    command:
+      - bash
+      - -euxc
+      - |
+        rm -f nodes-*.conf
+        nodes=()
+        for port in 6379 6378 6377; do
+          redis-server \
+            --cluster-enabled yes \
+            --cluster-node-timeout 5000 \
+            --cluster-config-file "nodes-$$port.conf" \
+            --port "$$port" \
+            --cluster-announce-ip redis \
+            2>&1 | sed -u "s/^/[redis:$$port] /" &
+          while ! <> /dev/tcp/127.0.0.1/$$port; do sleep 1; done
+          nodes+=("127.0.0.1:$$port")
+        done
+        yes yes | redis-cli --cluster create "$${nodes[@]}"
+        redis-cli cluster nodes
+        wait
